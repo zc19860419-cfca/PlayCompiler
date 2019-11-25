@@ -1,0 +1,24 @@
+/**
+* (additiveExpression
+* 	(additiveExpression
+* 		(multiplicativeExpression
+* 			(primaryExpression
+* 				(literal 2)
+* 			)
+* 		)
+* 	)
+* 	+
+* 	(multiplicativeExpression
+* 		(multiplicativeExpression
+* 			(primaryExpression
+* 				(literal 6)
+* 			)
+* 		)
+* 		/
+* 		(primaryExpression
+* 			(literal 3)
+* 		)
+* 	)
+* )
+*/
+2+6/3
