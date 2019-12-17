@@ -1104,14 +1104,14 @@ public class ASTEvaluator extends PlayScriptBaseVisitor<Object> {
      * @param valueContainer 存放环境变量的值的容器
      */
     private void getClosureValues(FunctionScope function, PlayObject valueContainer) {
-        //TODO
-//        if (function.closureVariables != null) {
-//            for (Variable var : function.closureVariables) {
-//                LValue lValue = getLValue(var); // 现在还可以从栈里取，退出函数以后就不行了
-//                Object value = lValue.getValue();
-//                valueContainer.fields.put(var, value);
-//            }
-//        }
+        if (function.closureVariables != null) {
+            for (Variable var : function.closureVariables) {
+                // 现在还可以从栈里取,退出函数以后就不行了
+                LValue lValue = getLValue(var);
+                Object value = lValue.getValue();
+                valueContainer.getFields().put(var, value);
+            }
+        }
     }
 
     /**
@@ -1173,7 +1173,7 @@ public class ASTEvaluator extends PlayScriptBaseVisitor<Object> {
      * @param variable
      * @return
      */
-    private Object getLValue(Variable variable) {
+    private LValue getLValue(Variable variable) {
         StackFrame f = stack.peek();
 
         PlayObject valueContainer = null;
