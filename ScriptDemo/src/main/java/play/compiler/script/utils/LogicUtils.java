@@ -1,5 +1,7 @@
 package play.compiler.script.utils;
 
+import cfca.org.slf4j.Logger;
+import cfca.org.slf4j.LoggerFactory;
 import play.compiler.script.runtime.PrimitiveType;
 
 /**
@@ -7,6 +9,8 @@ import play.compiler.script.runtime.PrimitiveType;
  * @Description: 逻辑运算
  */
 public class LogicUtils {
+    private static Logger LOG = LoggerFactory.getLogger(LogicUtils.class);
+
     public static Object GT(Object leftObject, Object rightObject, Object targetType) {
         Object rtn;
         if (targetType instanceof PrimitiveType) {
@@ -125,6 +129,8 @@ public class LogicUtils {
 
     public static boolean EQ(Object leftObject, Object rightObject, Object targetType) {
         Boolean rtn;
+        LOG.debug("EQ#Running...");
+        LOG.debug("EQ#type={}", targetType);
         if (targetType instanceof PrimitiveType) {
             switch ((PrimitiveType) targetType) {
                 case Integer:
@@ -143,12 +149,15 @@ public class LogicUtils {
                     rtn = ((Number) leftObject).shortValue() == ((Number) rightObject).shortValue();
                     break;
                 default:
-                    throw new IllegalArgumentException("LE#invalid op=>Unknown type:" + targetType);
+                    //对于对象实例、函数，直接比较对象引用
+                    rtn = (leftObject == rightObject);
+                    break;
             }
         } else {
+            //对于对象实例、函数，直接比较对象引用
             rtn = (leftObject == rightObject);
         }
-
+        LOG.debug("EQ#Finished");
         return rtn;
     }
 }

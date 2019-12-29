@@ -1,5 +1,7 @@
 package play.compiler.script.utils;
 
+import cfca.org.slf4j.Logger;
+import cfca.org.slf4j.LoggerFactory;
 import play.compiler.script.runtime.PrimitiveType;
 import play.compiler.script.runtime.Type;
 import play.compiler.utils.Args;
@@ -9,6 +11,7 @@ import play.compiler.utils.Args;
  * @Description: 四则运算
  */
 public class NumberUtils {
+    private static Logger LOG = LoggerFactory.getLogger(NumberUtils.class);
     public static Object div(Object leftObject, Object rightObject, Type targetType) {
         Object rtn;
         if (targetType instanceof PrimitiveType) {
@@ -97,9 +100,11 @@ public class NumberUtils {
     }
 
     public static Object add(Object leftObject, Object rightObject, Type targetType) {
+        LOG.debug("add#Running...");
         Args.notNull(leftObject, "add#leftObject");
         Args.notNull(rightObject, "add#rightObject");
         Args.notNull(targetType, "add#targetType");
+        LOG.debug("add#type={}", targetType);
         Object rtn;
         if (targetType instanceof PrimitiveType) {
             switch ((PrimitiveType) targetType) {
@@ -118,12 +123,16 @@ public class NumberUtils {
                 case Short:
                     rtn = ((Number) leftObject).shortValue() + ((Number) rightObject).shortValue();
                     break;
+                case String:
+                    rtn = String.valueOf(leftObject) + String.valueOf(rightObject);
+                    break;
                 default:
                     throw new IllegalArgumentException("add#invalid op=>Unknown type:" + targetType);
             }
         } else {
             throw new IllegalArgumentException("add#invalid op=>type not PrimitiveType:" + targetType);
         }
+        LOG.debug("add#Finished");
         return rtn;
     }
 }

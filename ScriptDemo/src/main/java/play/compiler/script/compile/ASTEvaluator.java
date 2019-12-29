@@ -59,6 +59,7 @@ import play.compiler.script.runtime.Type;
 import play.compiler.script.utils.LogicUtils;
 import play.compiler.script.utils.NumberUtils;
 
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Stack;
 
@@ -174,11 +175,11 @@ public class ASTEvaluator extends PlayScriptBaseVisitor<Object> {
     }
 
     private void dumpStackFrame() {
-        LOG.info("Stack Frames ----------------");
+        LOG.debug("Stack Frames ----------------");
         for (StackFrame frame : stack) {
-            LOG.info(frame.toString());
+            LOG.debug(frame.toString());
         }
-        LOG.info("-----------------------------");
+        LOG.debug("-----------------------------");
     }
 
     @Override
@@ -480,10 +481,8 @@ public class ASTEvaluator extends PlayScriptBaseVisitor<Object> {
      */
     @Override
     public Object visitVariableDeclaratorId(VariableDeclaratorIdContext ctx) {
-        Object rtn = null;
         Symbol symbol = at.symbolOfNode.get(ctx);
-        rtn = getLValue((Variable) symbol);
-        return rtn;
+        return getLValue((Variable) symbol);
     }
 
     /**
@@ -499,7 +498,7 @@ public class ASTEvaluator extends PlayScriptBaseVisitor<Object> {
     @Override
     public Object visitVariableInitializer(VariableInitializerContext ctx) {
         Object rtn = null;
-        if (ctx.expression() != null) {
+        if (null != ctx.expression()) {
             rtn = visitExpression(ctx.expression());
         }
         return rtn;
@@ -651,7 +650,7 @@ public class ASTEvaluator extends PlayScriptBaseVisitor<Object> {
                 default:
                     break;
             }
-        } else if (ctx.functionCall() != null) {
+        } else if (null != ctx.functionCall()) {
             rtn = visitFunctionCall(ctx.functionCall());
         }
         return rtn;
@@ -760,6 +759,8 @@ public class ASTEvaluator extends PlayScriptBaseVisitor<Object> {
     }
 
     /**
+     * 处理 FunctionCall 节点
+     * <p>
      * functionCall
      * : IDENTIFIER '(' expressionList? ')'
      * | THIS '(' expressionList? ')'
@@ -771,83 +772,262 @@ public class ASTEvaluator extends PlayScriptBaseVisitor<Object> {
      */
     @Override
     public Object visitFunctionCall(FunctionCallContext ctx) {
-        //this
-        if (null != ctx.THIS()) {
-            thisConstructor(ctx);
-            //不需要有返回值,因为本身就是在构造方法里调用的.
-            return null;
-        }
-        //super
-        else if (null != ctx.SUPER()) {
-            //似乎跟this完全一样.因为方法的绑定是解析准确了的.
-            thisConstructor(ctx);
-            return null;
-        }
-
-        //FIXME:暂时不支持this和super
-        //if (ctx.IDENTIFIER() == null) {return null;}
-
         Object rtn = null;
+        if (null != ctx.THIS()) {
+            //this
+            rtn = visitThisOrSuperFunctionCall(ctx);
+        } else if (null != ctx.SUPER()) {
+            //super:似乎跟this完全一样.因为方法的绑定是解析准确了的.
+            rtn = visitThisOrSuperFunctionCall(ctx);
+        } else {
+            //FIXME:暂时不支持this和super
+            //if (ctx.IDENTIFIER() == null) {return null;}
 
-        String functionName = ctx.IDENTIFIER().getText();  //这是调用时的名称，不一定是真正的函数名，还可能是函数尅性的变量名
+            rtn = visitIdentifierFunctionCall(ctx);
+        }
 
-        //如果调用的是类的缺省构造函数，则直接创建对象并返回
+        return rtn;
+    }
+
+    private Object visitIdentifierFunctionCall(FunctionCallContext ctx) {
+        LOG.debug("visitIdentifierFunctionCall#Running...");
+        LOG.debug("visitIdentifierFunctionCall#{}:" +
+                        "startLine({}),positionInLine({})",
+                ctx, ctx.getStart().getLine(), ctx.getStart().getStartIndex());
+        Object rtn;
+        //这是调用时的名称，不一定是真正的函数名，还可能是函数属性的变量名
+        String functionName = ctx.IDENTIFIER().getText();
+
         Symbol symbol = at.symbolOfNode.get(ctx);
         if (symbol instanceof ClassScopeAndType) {
+            //如果调用的是类的缺省构造函数，则直接创建对象并返回
             //类的缺省构造函数。没有一个具体函数跟它关联，只是指向了一个类。
-            return createAndInitClassObject((ClassScopeAndType) symbol);  //返回新创建的对象
-        }
-        //硬编码的一些函数
-        else if (functionName.equals("println")) {
+            rtn = createAndInitClassObject((ClassScopeAndType) symbol);  //返回新创建的对象
+        } else if (functionName.equals("println")) {
+            //硬编码的一些函数
             // TODO 临时代码，用于打印输出
             println(ctx);
-            return rtn;
+            rtn = null;
+        } else {
+            //在上下文中查找出函数,并根据需要创建 FunctionObject
+            FunctionObject functionObject = getFuntionObject(ctx);
+            FunctionScope functionScope = functionObject.getFunctionScope();
+
+            //如果是对象的构造方法,则按照对象方法调用去执行,并返回所创建出的对象.
+            if (functionScope.isConstructor()) {
+                ClassScopeAndType theClass = (ClassScopeAndType) functionScope.enclosingScope;
+
+                //先做缺省的初始化
+                ClassObject newObject = createAndInitClassObject(theClass);
+
+                methodCall(newObject, ctx, false);
+                //返回新创建的对象
+                rtn = newObject;
+            } else {
+                //计算参数值
+                List<Object> paramValues = calcParamValues(ctx);
+
+                if (traceFunctionCall) {
+                    LOG.debug("visitIdentifierFunctionCall#FunctionCall : {}", ctx.getText());
+                }
+                rtn = functionCall(functionObject, paramValues);
+            }
         }
+        LOG.debug("visitIdentifierFunctionCall#Finished");
+        return rtn;
+    }
 
-        //在上下文中查找出函数,并根据需要创建 FunctionObject
-        FunctionObject functionObject = getFuntionObject(ctx);
-        FunctionScope function = functionObject.getFunctionScope();
+    private Object visitThisOrSuperFunctionCall(FunctionCallContext ctx) {
+        thisConstructor(ctx);
+        //不需要有返回值,因为本身就是在构造方法里调用的.
+        return null;
+    }
 
-        //如果是对象的构造方法,则按照对象方法调用去执行,并返回所创建出的对象.
-        if (function.isConstructor()) {
-            ClassScopeAndType theClass = (ClassScopeAndType) function.enclosingScope;
+    /**
+     * 对象方法调用.
+     * 要先计算完参数的值,然后再添加对象的 StackFrame,然后再调用方法.
+     *
+     * @param classObject 实际调用时的对象.
+     *                    通过这个对象可以获得真实的类,支持多态.
+     * @param ctx
+     * @param isSuper     是否已经是父类中的方法
+     * @return
+     */
+    private Object methodCall(ClassObject classObject, FunctionCallContext ctx, boolean isSuper) {
+        Object rtn = null;
 
-            ClassObject newObject = createAndInitClassObject(theClass);  //先做缺省的初始化
+        //查找函数,并根据需要创建 FunctionObject
+        //如果查找到的是类的属性,FunctionType型的,需要把在对象的栈桢里查.
+        StackFrame classFrame = new StackFrame(classObject);
+        pushStack(classFrame);
 
-            methodCall(newObject, ctx, false);
-            //返回新创建的对象
-            return newObject;
+        FunctionObject funtionObject = getFuntionObject(ctx);
+
+        popStack();
+
+        FunctionScope function = funtionObject.getFunctionScope();
+
+        //对普通的类方法,需要在运行时动态绑定
+        //这是从对象获得的类型,是真实类型.可能是变量声明时的类型的子类
+        ClassScopeAndType theClass = classObject.getType();
+        if (!function.isConstructor() && !isSuper) {
+            //从当前类逐级向上查找,找到正确的方法定义
+            FunctionScope overrided = theClass.getFunction(function.name, function.getParamTypes());
+            //原来这个function,可能指向一个父类的实现.现在从子类中可能找到重载后的方法,这个时候要绑定到子类的方法上
+            if (overrided != null && overrided != function) {
+                function = overrided;
+                funtionObject.setFunctionScope(function);
+            }
         }
 
         //计算参数值
         List<Object> paramValues = calcParamValues(ctx);
 
-        if (traceFunctionCall) {
-            LOG.info(">>FunctionCall : {}", ctx.getText());
-        }
+        //对象的 frame 要等到函数参数都计算完了才能添加.
+        pushStack(classFrame);
 
-        rtn = functionCall(functionObject, paramValues);
+        //执行函数
+        rtn = functionCall(funtionObject, paramValues);
+
+        //弹出栈桢
+        popStack();
 
         return rtn;
     }
 
+    /**
+     * 执行一个函数的方法体.需要首先设置参数值,然后再执行代码
+     *
+     * @param functionObject
+     * @param paramValues
+     * @return
+     */
     private Object functionCall(FunctionObject functionObject, List<Object> paramValues) {
-        //TODO
-        return null;
+        Object result = null;
+
+        //添加函数的栈帧
+        StackFrame functionFrame = new StackFrame(functionObject);
+        pushStack(functionFrame);
+
+        /**
+         * 给参数赋值,这些值进入 functionFrame
+         * int foo(final int a, final int b)
+         * functionDeclaration
+         *     : typeTypeOrVoid? IDENTIFIER formalParameters ('[' ']')*
+         *       (THROWS qualifiedNameList)?
+         *       functionBody
+         *     ;
+         * formalParameters
+         *     : '(' formalParameterList? ')'
+         *     ;
+         *
+         * formalParameterList
+         *     : formalParameter (',' formalParameter)* (',' lastFormalParameter)?
+         *     | lastFormalParameter
+         *     ;
+         *
+         * formalParameter
+         *     : variableModifier* typeType variableDeclaratorId
+         *     ;
+         *
+         * lastFormalParameter
+         *     : variableModifier* typeType '...' variableDeclaratorId
+         *     ;
+         * variableModifier
+         *     : FINAL
+         *     ;
+         */
+        FunctionDeclarationContext functionCode = (FunctionDeclarationContext) functionObject.getFunctionScope().getParserRuleContext();
+        final FormalParameterListContext formalParameterListContext = functionCode.formalParameters().formalParameterList();
+        if (null != formalParameterListContext) {
+            FormalParameterContext param;
+            LValue lValue;
+            for (int i = 0; i < formalParameterListContext.formalParameter().size(); i++) {
+                param = formalParameterListContext.formalParameter(i);
+                lValue = (LValue) visitVariableDeclaratorId(param.variableDeclaratorId());
+                lValue.setValue(paramValues.get(i));
+            }
+        }
+
+        //调用函数(方法)体
+        result = visitFunctionDeclaration(functionCode);
+        //从函数的栈桢中弹出 StackFrame
+        popStack();
+
+        if (result instanceof ReturnObject) {
+            result = ((ReturnObject) result).getReturnValue();
+        }
+
+        return result;
     }
 
+    /**
+     * 计算某个函数调用时的参数值
+     *
+     * @param ctx
+     * @return
+     */
     private List<Object> calcParamValues(FunctionCallContext ctx) {
-        //TODO
-        return null;
+        List<Object> paramValues = new LinkedList<>();
+        final ExpressionListContext expressionListContext = ctx.expressionList();
+        if (null != expressionListContext) {
+            final List<ExpressionContext> expressions = expressionListContext.expression();
+            Object value;
+            for (ExpressionContext exp : expressions) {
+                value = visitExpression(exp);
+                if (value instanceof LValue) {
+                    value = ((LValue) value).getValue();
+                }
+                paramValues.add(value);
+            }
+        }
+
+        return paramValues;
     }
 
-    private void methodCall(ClassObject newObject, FunctionCallContext ctx, boolean b) {
-        //TODO
-    }
-
+    /**
+     * 根据函数调用上下文,返回一个 FunctionObject
+     * Case1:对于函数类型的变量,这个 FunctionObject 是存在变量里的;
+     * Case2:对于普通的函数调用,此时需要创建一个.
+     *
+     * @param ctx
+     * @return
+     */
     private FunctionObject getFuntionObject(FunctionCallContext ctx) {
-        //TODO
-        return null;
+        FunctionObject result = null;
+        if (null == ctx.IDENTIFIER()) {
+            //暂时不支持 this 和 super
+            result = null;
+        } else {
+            FunctionScope functionScope = null;
+            final Symbol symbol = at.symbolOfNode.get(ctx);
+
+            if (symbol instanceof Variable) {
+                //Case1:函数类型的函数
+                Variable variable = (Variable) symbol;
+                final LValue lValue = getLValue(variable);
+                final Object value = lValue.getValue();
+                if (value instanceof FunctionObject) {
+                    result = (FunctionObject) value;
+                    functionScope = result.getFunctionScope();
+                }
+            } else if (symbol instanceof FunctionScope) {
+                //Case2:普通的函数
+                functionScope = (FunctionScope) symbol;
+            } else {
+                //Case3:报错
+                //这是调用时的名称,不一定是真正的函数名,还可能是函数类型的变量名
+                String functionName = ctx.IDENTIFIER().getText();
+                at.log("unable to find function or function variable " + functionName, ctx);
+                LOG.error("getFuntionObject#unable to find function or function variable {}", functionName);
+                result = null;
+            }
+
+            if (null == result) {
+                result = new FunctionObject(functionScope);
+            }
+        }
+        return result;
     }
 
     private void thisConstructor(FunctionCallContext ctx) {
@@ -902,7 +1082,12 @@ public class ASTEvaluator extends PlayScriptBaseVisitor<Object> {
         return obj;
     }
 
-    // 类的缺省初始化方法
+    /**
+     * 类的缺省初始化方法
+     *
+     * @param theClass
+     * @param obj
+     */
     protected void defaultObjectInit(ClassScopeAndType theClass, ClassObject obj) {
         for (Symbol symbol : theClass.symbols) {
             // 把变量加到 obj 里,缺省先都初始化成 null,不允许有未初始化的

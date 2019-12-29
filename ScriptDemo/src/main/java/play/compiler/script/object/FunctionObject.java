@@ -35,7 +35,7 @@ public class FunctionObject extends PlayObject {
         return functionScope;
     }
 
-    protected void setFunctionScope(FunctionScope functionScope) {
+    public void setFunctionScope(FunctionScope functionScope) {
         this.functionScope = functionScope;
     }
 }

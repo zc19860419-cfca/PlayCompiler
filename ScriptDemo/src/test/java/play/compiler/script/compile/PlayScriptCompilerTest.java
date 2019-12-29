@@ -211,6 +211,19 @@ public class PlayScriptCompilerTest {
     }
 
     @Test
+    public void test_compile_with_script_expressions1() throws Exception {
+        String script = readScript("../TestData/expressions1.play");
+        AnnotatedTree at = compiler.compile(script, verbose, astDump);
+        Assert.assertFalse(at.hasCompilationError());
+
+        final String scopeTreeString = at.getScopeTreeString();
+        System.out.println(scopeTreeString);
+
+        Object result = compiler.Execute(at);
+        System.out.println(result);
+    }
+
+    @Test
     public void test_compile_with_script_FirstClassFunction() throws Exception {
         String script = readScript("../TestData/FirstClassFunction.play");
         AnnotatedTree at = compiler.compile(script, verbose, astDump);

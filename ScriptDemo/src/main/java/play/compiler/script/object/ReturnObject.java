@@ -1,16 +1,28 @@
 package play.compiler.script.object;
 
 /**
- * 代表Return语句的返回值
+ * @Author: zhangchong
+ * @Description: 代表Return语句的返回值
  */
 public class ReturnObject {
-    Object returnValue = null; //真正的返回值。
+    /**
+     * 真正的返回值
+     */
+    Object returnValue = null;
 
     public ReturnObject(Object value) {
         this.returnValue = value;
     }
 
-    //在打印时输出ReturnObject
+    public Object getReturnValue() {
+        return returnValue;
+    }
+
+    /**
+     * 在打印时输出ReturnObject
+     *
+     * @return
+     */
     @Override
     public String toString() {
         return "ReturnObject";

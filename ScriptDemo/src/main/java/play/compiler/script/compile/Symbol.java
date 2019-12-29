@@ -37,6 +37,10 @@ public abstract class Symbol {
         return enclosingScope;
     }
 
+    protected ParserRuleContext getParserRuleContext() {
+        return ctx;
+    }
+
     @Override
     public boolean equals(Object o) {
         boolean result;
